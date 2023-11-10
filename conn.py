@@ -26,7 +26,10 @@ def ver_usuarios():
     for user in db.users.find():
         print(f"ID: {user['_id']}, Nombre: {user['name']}, Correo: {user['email']}, Articulos: {user['articles']}, Comentarios: {user['comments']}")
 
-
+def ver_usuarios_nombres():
+    print("lista de Usuarios: \n")
+    for user in db.users.find():
+        print(f"ID: {user['_id']}, Nombre: {user['name']}, Correo: {user['email']}")
 
 def insertar_articulo():
     print("lista de Usuarios: \n")
@@ -107,58 +110,41 @@ def insertar_articulo():
 
 
 def ver_articulos():
-    print("lista de usuarios:\n ")
+    print("Lista de usuarios:\n ")
     for user in db.users.find():
         print(f"ID: {user['_id']}, Nombre: {user['name']}, Correo: {user['email']}")
 
     usuario_id = input("Ingrese el ID del usuario al que desea asociar el artículo: ")
     usuario = db.users.find_one({"_id": ObjectId(usuario_id)})
+
     if usuario:
         articulos = db.articles.find({"user_id": usuario_id})
-        print(f"Artículos de {usuario['name']} ({usuario['email']}):")
+
+        print(f"\nArtículos de {usuario['name']} ({usuario['email']}):\n")
         for articulo in articulos:
-            print(f"ID: {articulo['_id']}, Título: {articulo['title']}, Fecha: {articulo['date']}, Usuario: {articulo['user_name']} ,Contenido: {articulo['text']}")
+            # Obtener nombres de tags y categorías
+            nombres_tags = [db.tags.find_one({"_id": tag_id})['name'] for tag_id in articulo['tags']]
+            nombres_categorias = [db.categories.find_one({"_id": categoria_id})['name'] for categoria_id in articulo['categories']]
+
+            # Obtener comentarios asociados al artículo
+            comentarios = db.comments.find({"article_id": articulo['_id']})
+
+            print(f"ID: {articulo['_id']}")
+            print(f"Título: {articulo['title']}")
+            print(f"Fecha: {articulo['date']}")
+            print(f"Usuario: {articulo['user_name']}")
+            print(f"Contenido: {articulo['text']}")
+            print(f"Tags: {nombres_tags}")
+            print(f"Categorías: {nombres_categorias}")
+
+            print("Comentarios:")
+            for comentario in comentarios:
+                print(f"- ID: {comentario['_id']}, Usuario: {comentario['user_name']}, Texto: {comentario['text']}")
+
+            print("-" * 30)
+
     else:
         print("Usuario no encontrado.")
-
-
-
-def insertar_comentario():
-    print("lista de Usuarios: \n")
-    for user in db.users.find():
-        print(f"ID: {user['_id']}, Nombre: {user['name']}, Correo: {user['email']}")
-
-    usuario_id = input("Ingrese el ID del usuario al que desea asociar al comentario: ")
-    # Obtener el nombre del usuario basándote en el usuario_id
-    usuario = db.users.find_one({"_id": ObjectId(usuario_id)})
-    nombre_usuario = usuario["name"] if usuario else "Usuario Desconocido"
-
-    comentario = input("Ingrese la el comentario: ")
-
-    # Crear un nuevo comentario con el ID y el nombre del usuario
-    comment_data = {"user_id": usuario_id, "user_name": nombre_usuario, "descripcion": comentario}
-    result = db.comments.insert_one(comment_data)
-
-    db.users.update_one({"_id": ObjectId(usuario_id)}, {"$push": {"comments": ObjectId(result.inserted_id)}})
-
-
-    print(f"Comentario creado con ID: {result.inserted_id}")
-
-def ver_comentarios():
-    print("lista de usuarios:\n")
-    for user in db.users.find():
-        print(f"ID: {user['_id']}, Nombre: {user['name']}, Correo: {user['email']}")
-    usuario_id = input("Ingrese el ID del usuario al que desea asociar al comentario: ")
-    usuario = db.users.find_one({"_id": ObjectId(usuario_id)})
-    if usuario:
-        comentarios = db.comments.find({"user_id": usuario_id})
-        print(f"Comentarios de {usuario['name']} ({usuario['email']}):")
-        for comentario in comentarios:
-            print(f"ID: {comentario['_id']}, Usuario: {comentario['user_name']}, comentario: {comentario['descripcion']}")
-    else:
-        print("Usuario no encontrado.")
-
-
 
 def insertar_comentario_articulo():
     print("Lista de Artículos:\n")
@@ -169,15 +155,40 @@ def insertar_comentario_articulo():
     articulo = articles_collection.find_one({"_id": ObjectId(articulo_id)})
     titulo_articulo = articulo["title"] if articulo else "Artículo Desconocido"
 
-    nombre = input("Ingrese su nombre: ")
+    usuario_id = input("Ingrese el ID del usuario que realiza el comentario: ")
+    usuario = users_collection.find_one({"_id": ObjectId(usuario_id)})
+    nombre_usuario = usuario["name"] if usuario else "Usuario Desconocido"
+
     comentario = input("Ingrese el comentario: ")
 
-    comment_data = {"article_id": ObjectId(articulo_id), "article_title": titulo_articulo, "name": nombre, "text": comentario}
+    comment_data = {"article_id": ObjectId(articulo_id), "article_title": titulo_articulo, "user_id": ObjectId(usuario_id), "user_name": nombre_usuario, "text": comentario}
     result = comments_collection.insert_one(comment_data)
 
     articles_collection.update_one({"_id": ObjectId(articulo_id)}, {"$push": {"comments": result.inserted_id}})
     
     print(f"Comentario creado con ID: {result.inserted_id}")
+
+
+def ver_comentarios_usuario():
+    ver_usuarios_nombres()
+    usuario_id = input("Ingrese el ID del usuario del cual desea ver los comentarios: ")
+    usuario = db.users.find_one({"_id": ObjectId(usuario_id)})
+
+    if usuario:
+        comentarios = db.comments.find({"user_id": ObjectId(usuario_id)})
+        print(f"Comentarios de {usuario['name']} ({usuario['email']}):")
+
+        for comentario in comentarios:
+            print(f"- ID: {comentario['_id']}")
+            print(f"  Usuario: {comentario['user_name']}")
+            print(f"  Comentario: {comentario['text']}")
+            print(f"  En el Articulo: {comentario['article_title']}")
+            print("-" * 30)
+    else:
+        print("Usuario no encontrado.")
+
+
+
 
 def ver_comentarios_articulo():
     print("Lista de Artículos:\n")
@@ -187,10 +198,13 @@ def ver_comentarios_articulo():
     articulo_id = input("Ingrese el ID del artículo para ver los comentarios: ")
     articulo = articles_collection.find_one({"_id": ObjectId(articulo_id)})
     if articulo:
-        comentarios = comments_collection.find({"article_id": ObjectId(articulo_id)})
-        print(f"Comentarios del artículo '{articulo['title']}':")
+        
+        comentarios = db.comments.find({"article_id": articulo['_id']})
+        print("Comentarios:")
         for comentario in comentarios:
-            print(f"ID: {comentario['_id']}, Nombre: {comentario['name']}, Comentario: {comentario['text']}")
+            print(f"- ID: {comentario['_id']}, Usuario: {comentario['user_name']}, Texto: {comentario['text']}")
+
+        print("-" * 30)
     else:
         print("Artículo no encontrado.")
 
@@ -219,6 +233,22 @@ def crear_categoria():
     
     print(f"Categoría creada con ID: {result.inserted_id}")
 
+def ver_categorias():
+    print("Lista de Categorías:\n")
+    for categoria in db.categories.find():
+        print(f"ID: {categoria['_id']}, Nombre: {categoria['name']}")
+
+        # Mostrar artículos asociados a la categoría
+        articulos_asociados = db.articles.find({"categories": categoria['_id']})
+        if articulos_asociados:
+            print("Artículos asociados:")
+            for articulo in articulos_asociados:
+                print(f"- ID: {articulo['_id']}, Título: {articulo['title']}")
+        else:
+            print("No hay artículos asociados a esta categoría.")
+
+        print("-" * 30)
+
 def crear_tag():
     nombre_tag = input("Ingrese el nombre del tag: ")
     
@@ -244,8 +274,24 @@ def crear_tag():
     
     print(f"Tag creado con ID: {result.inserted_id}")
 
+def ver_tags():
+    print("Lista de Tags:\n")
+    for tag in db.tags.find():
+        print(f"ID: {tag['_id']}, Nombre: {tag['name']}")
+
+        # Mostrar artículos asociados al tag
+        articulos_asociados = db.articles.find({"tags": tag['_id']})
+        if articulos_asociados:
+            print("Artículos asociados:")
+            for articulo in articulos_asociados:
+                print(f"- ID: {articulo['_id']}, Título: {articulo['title']}")
+        else:
+            print("No hay artículos asociados a este tag.")
+
+        print("-" * 30)
+
 # Agrega la función al menú o a la parte del código donde quieres que se pueda ejecutar.
-insertar_articulo()
+#insertar_articulo()
 #insertar_usuario()
 #insertar_comentario_articulo()
 '''
@@ -255,12 +301,12 @@ insertar_comentario()654e74a9a69ee87308ae00a4
 '''
 #ver_usuarios()
 #print("comentarios: \n" )
-#ver_comentarios()
+#ver_comentarios_usuario()
 #print("articulos: \n" )
 #ver_articulos()
-
-
-
+#ver_comentarios_articulo()
+#ver_categorias()
+#ver_tags()
 
 # Cerrar la conexión a la base de datos
 client.close()
