@@ -43,15 +43,40 @@ class BlogInterface:
         frame = tk.Frame(user_options_window)
         frame.pack(expand=True, fill=tk.BOTH)
             
-        tk.Button(frame, text="Agregar Usuario", command=self.add_user).pack(pady=10)
+        tk.Button(frame, text="Agregar Usuario", command=self.show_add_user_dialog).pack(pady=10)
         tk.Button(frame, text="Eliminar Usuario", command=self.delete_user).pack(pady=10)
         tk.Button(frame, text="Editar Usuario", command=self.edit_user).pack(pady=10)
         tk.Button(frame, text="Buscar Usuario", command=self.search_user).pack(pady=10)
-        
-    def add_user(self):
-        # Lógica para agregar Usuario
-        messagebox.showinfo("Agregar Usuario", "Lógica para agregar un Usuario")
+    
+    
+    #Parte para que salga lo gráfico de añadir a un usuario
+    def show_add_user_dialog(self):
+        add_user_dialog = tk.Toplevel(self.master)
+        add_user_dialog.title("Add User")
 
+        tk.Label(add_user_dialog, text="Name:").grid(row=0, column=0, padx=10, pady=5)
+        name_entry = tk.Entry(add_user_dialog)
+        name_entry.grid(row=0, column=1, padx=10, pady=5)
+
+        tk.Label(add_user_dialog, text="Email:").grid(row=1, column=0, padx=10, pady=5)
+        email_entry = tk.Entry(add_user_dialog)
+        email_entry.grid(row=1, column=1, padx=10, pady=5)
+
+        tk.Button(add_user_dialog, text="Add User", command=lambda: self.add_user(name_entry.get(), email_entry.get(), add_user_dialog)).grid(row=2, column=0, columnspan=2, pady=10)
+   
+    #Funciones
+    def add_user(self, name, email, add_user_dialog):
+        if name and email:
+            try:
+                user_data = {"name": name, "email": email, "articles": [], "comments": []}
+                result = self.users_collection.insert_one(user_data)
+                messagebox.showinfo("Todo bien,", f"User {name} añadido con un ID: {result.inserted_id}")
+                add_user_dialog.destroy()
+            except errors.PyMongoError as e:
+                messagebox.showerror("Error :c", f"Error al añadir al usuario {e}")
+        else:
+            messagebox.showwarning("¡Aguas!", "Por favor llena el usuario y el email.")
+    
     def delete_user(self):
         # Lógica para eliminar una usuario
         messagebox.showinfo("Eliminar usuario", "Lógica para eliminar una usuario")
