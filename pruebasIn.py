@@ -86,9 +86,17 @@ class BlogInterface:
         messagebox.showinfo("Editar usuario", "Lógica para editar una usuario")
 
     def search_user(self):
-        # Lógica para buscar una usuario
-        messagebox.showinfo("Buscar usuario", "Lógica para buscar una usuario")
-        
+        try:
+            users = self.users_collection.find()
+            user_list = "\n".join([f"ID: {user['_id']}, Name: {user.get('name', 'N/A')}, Email: {user.get('email', 'N/A')}" for user in users])
+            if user_list:
+                messagebox.showinfo("Users", user_list)
+            else:
+                messagebox.showinfo("Users", "No users found.")
+        except errors.PyMongoError as e:
+            messagebox.showerror("Error", f"Error retrieving users: {e}")
+
+
     def show_category_options(self):
         category_options_window = tk.Toplevel(self.master)
         category_options_window.title("Opciones de Categorías")
