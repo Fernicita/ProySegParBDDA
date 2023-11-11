@@ -156,18 +156,40 @@ def insertar_comentario_articulo():
 
     articulo_id = input("Ingrese el ID del artículo al que desea asociar el comentario: ")
     articulo = articles_collection.find_one({"_id": ObjectId(articulo_id)})
-    titulo_articulo = articulo["title"] if articulo else "Artículo Desconocido"
+    if not articulo:
+        print("Artículo no encontrado.")
+        return
+    titulo_articulo = articulo["title"]
 
     usuario_id = input("Ingrese el ID del usuario que realiza el comentario: ")
     usuario = users_collection.find_one({"_id": ObjectId(usuario_id)})
-    nombre_usuario = usuario["name"] if usuario else "Usuario Desconocido"
+    if not usuario:
+        print("Usuario no encontrado.")
+        return
+    nombre_usuario = usuario["name"]
 
     comentario = input("Ingrese el comentario: ")
 
-    comment_data = {"article_id": ObjectId(articulo_id), "article_title": titulo_articulo, "user_id": ObjectId(usuario_id), "user_name": nombre_usuario, "text": comentario}
+    comment_data = {
+        "article_id": ObjectId(articulo_id), 
+        "article_title": titulo_articulo, 
+        "user_id": ObjectId(usuario_id), 
+        "user_name": nombre_usuario, 
+        "text": comentario
+    }
     result = comments_collection.insert_one(comment_data)
 
-    articles_collection.update_one({"_id": ObjectId(articulo_id)}, {"$push": {"comments": result.inserted_id}})
+    # Actualizar la colección de artículos con la referencia del nuevo comentario
+    articles_collection.update_one(
+        {"_id": ObjectId(articulo_id)}, 
+        {"$push": {"comments": result.inserted_id}}
+    )
+
+    # Actualizar la colección de usuarios con la referencia del nuevo comentario
+    users_collection.update_one(
+        {"_id": ObjectId(usuario_id)}, 
+        {"$push": {"comments": result.inserted_id}}
+    )
     
     print(f"Comentario creado con ID: {result.inserted_id}")
 
@@ -456,6 +478,8 @@ def eliminar_categoria():
     except Exception as e:
         print(f"Ocurrió un error al eliminar la categoría: {e}")
 
+
+eliminar_comentario()
 # Cerrar la conexión a la base de dat
 # Agrega la función al menú o a la parte del código donde quieres que se pueda ejecutar.
 #insertar_articulo()
