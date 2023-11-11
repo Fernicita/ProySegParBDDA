@@ -1,5 +1,8 @@
 import pymongo
 from bson.objectid import ObjectId
+import flet as ft
+from datetime import datetime
+
 
 # Establecer la conexión con el servidor MongoDB (asegúrate de tener MongoDB en ejecución)
 client = pymongo.MongoClient('localhost', 27017)  # El primer parámetro es el host y el segundo es el puerto
@@ -290,6 +293,170 @@ def ver_tags():
 
         print("-" * 30)
 
+
+
+
+def eliminar_usuario():
+    # Mostrar todos los usuarios disponibles para eliminar
+    print("Lista de Usuarios disponibles para eliminar:\n")
+    for user in db.users.find():
+        print(f"ID: {user['_id']}, Nombre: {user['name']}")
+
+    # Pedir al usuario que introduzca el ID del usuario a eliminar
+    usuario_id = input("Ingrese el ID del usuario que desea eliminar: ")
+    
+    try:
+        # Convertir el string de entrada en un ObjectId de MongoDB
+        usuario_id = ObjectId(usuario_id)
+        
+        # Eliminar el usuario
+        result = db.users.delete_one({"_id": usuario_id})
+        
+        if result.deleted_count:
+            print(f"Usuario con ID: {usuario_id} ha sido eliminado.")
+        else:
+            print(f"No se encontró el usuario con ID: {usuario_id} o no pudo ser eliminado.")
+
+    except Exception as e:
+        print(f"Ocurrió un error al eliminar el usuario: {e}")
+
+def eliminar_articulo():
+    # Mostrar todos los artículos disponibles para eliminar
+    print("Lista de Artículos disponibles para eliminar:\n")
+    for article in db.articles.find():
+        print(f"ID: {article['_id']}, Título: {article['title']}")
+
+    # Pedir al usuario que introduzca el ID del artículo a eliminar
+    articulo_id = input("Ingrese el ID del artículo que desea eliminar: ")
+    
+    try:
+        # Convertir el string de entrada en un ObjectId de MongoDB
+        articulo_id = ObjectId(articulo_id)
+
+        # Eliminar el artículo
+        db.articles.delete_one({"_id": articulo_id})
+        
+        # Eliminar todas las referencias del artículo en la colección de comentarios
+        db.comments.delete_many({"article_id": articulo_id})
+
+        # Eliminar las referencias del artículo en la colección de tags
+        db.tags.update_many({}, {"$pull": {"urls": articulo_id}})
+
+        # Eliminar las referencias del artículo en la colección de categorías
+        db.categories.update_many({}, {"$pull": {"urls": articulo_id}})
+
+        print(f"Artículo con ID: {articulo_id} y todas sus referencias han sido eliminados.")
+
+    except Exception as e:
+        print(f"Ocurrió un error al eliminar el artículo: {e}")
+
+
+
+def eliminar_comentario():
+    # Mostrar todos los comentarios disponibles para eliminar
+    print("Lista de Comentarios disponibles para eliminar:\n")
+    for comment in db.comments.find():
+        print(f"ID: {comment['_id']}, Texto: {comment['text']}")
+
+    # Pedir al usuario que introduzca el ID del comentario a eliminar
+    comentario_id = input("Ingrese el ID del comentario que desea eliminar: ")
+    
+    try:
+        # Convertir el string de entrada en un ObjectId de MongoDB
+        comentario_id = ObjectId(comentario_id)
+        
+        # Buscar el comentario para obtener el ID del artículo y del usuario asociado
+        comentario = db.comments.find_one({"_id": comentario_id})
+        if comentario:
+            articulo_id = comentario['article_id']
+            usuario_id = comentario['user_id']
+
+            # Eliminar el comentario
+            result = db.comments.delete_one({"_id": comentario_id})
+            
+            if result.deleted_count:
+                print(f"Comentario con ID: {comentario_id} ha sido eliminado.")
+
+                # Actualizar la colección de artículos para eliminar la referencia al comentario
+                if articulo_id:
+                    db.articles.update_one({"_id": articulo_id}, {"$pull": {"comments": comentario_id}})
+                    print(f"Referencia al comentario eliminada del artículo con ID: {articulo_id}")
+
+                # Actualizar la colección de usuarios para eliminar la referencia al comentario
+                if usuario_id:
+                    db.users.update_one({"_id": usuario_id}, {"$pull": {"comments": comentario_id}})
+                    print(f"Referencia al comentario eliminada del usuario con ID: {usuario_id}")
+            else:
+                print(f"No se encontró el comentario con ID: {comentario_id} o no pudo ser eliminado.")
+
+        else:
+            print(f"No se encontró el comentario con ID: {comentario_id}")
+
+    except Exception as e:
+        print(f"Ocurrió un error al eliminar el comentario: {e}")
+
+def eliminar_tag():
+    # Mostrar todos los tags disponibles para eliminar
+    print("Lista de Tags disponibles para eliminar:\n")
+    for tag in db.tags.find():
+        print(f"ID: {tag['_id']}, Nombre: {tag['name']}")
+
+    # Pedir al usuario que introduzca el ID del tag a eliminar
+    tag_id = input("Ingrese el ID del tag que desea eliminar: ")
+
+    try:
+        # Convertir el string de entrada en un ObjectId de MongoDB
+        tag_id = ObjectId(tag_id)
+
+        # Eliminar el tag
+        result = db.tags.delete_one({"_id": tag_id})
+
+        if result.deleted_count:
+            print(f"Tag con ID: {tag_id} ha sido eliminado.")
+
+            # Actualizar la colección de artículos para eliminar la referencia al tag
+            updated_articles = db.articles.update_many({"tags": tag_id}, {"$pull": {"tags": tag_id}})
+            print(f"Se han actualizado {updated_articles.modified_count} artículos para eliminar la referencia al tag eliminado.")
+
+        else:
+            print(f"No se encontró el tag con ID: {tag_id} o no pudo ser eliminado.")
+
+    except Exception as e:
+        print(f"Ocurrió un error al eliminar el tag: {e}")
+
+def eliminar_categoria():
+    # Mostrar todas las categorías disponibles para eliminar
+    print("Lista de Categorías disponibles para eliminar:\n")
+    for categoria in db.categories.find():
+        print(f"ID: {categoria['_id']}, Nombre: {categoria['name']}")
+
+    # Pedir al usuario que introduzca el ID de la categoría a eliminar
+    categoria_id = input("Ingrese el ID de la categoría que desea eliminar: ")
+
+    try:
+        # Convertir el string de entrada en un ObjectId de MongoDB
+        categoria_id = ObjectId(categoria_id)
+
+        # Eliminar la categoría
+        result = db.categories.delete_one({"_id": categoria_id})
+
+        if result.deleted_count:
+            print(f"Categoría con ID: {categoria_id} ha sido eliminada.")
+
+            # Actualizar la colección de artículos para eliminar la referencia a la categoría
+            updated_articles = db.articles.update_many(
+                {"categories": categoria_id},
+                {"$pull": {"categories": categoria_id}}
+            )
+            print(f"Se han actualizado {updated_articles.modified_count} artículos para eliminar la referencia a la categoría eliminada.")
+
+        else:
+            print(f"No se encontró la categoría con ID: {categoria_id} o no pudo ser eliminada.")
+
+    except Exception as e:
+        print(f"Ocurrió un error al eliminar la categoría: {e}")
+
+# Cerrar la conexión a la base de dat
 # Agrega la función al menú o a la parte del código donde quieres que se pueda ejecutar.
 #insertar_articulo()
 #insertar_usuario()
