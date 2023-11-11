@@ -33,6 +33,7 @@ class BlogInterface:
         tk.Button(button_frame, text="Tags", command=self.show_tag_options).pack(side=tk.LEFT, padx=10)
         tk.Button(button_frame, text="Artículos", command=self.show_article_options).pack(side=tk.LEFT, padx=10)
 
+#Users
     def show_user_options(self):
         user_options_window = tk.Toplevel(self.master)
         user_options_window.title("Opciones de Usuario")
@@ -200,102 +201,560 @@ class BlogInterface:
         except errors.PyMongoError as e:
             messagebox.showerror("Error", f"Error retrieving users: {e}")
 
+#Categories
     def show_category_options(self):
         category_options_window = tk.Toplevel(self.master)
-        category_options_window.title("Opciones de Categorías")
+        category_options_window.title("Opciones para Categoría")
 
-        category_options_window.geometry("300x250+{}+{}".format(
-            self.master.winfo_rootx() + self.master.winfo_reqwidth() // 2 - 200,
-            self.master.winfo_rooty() + self.master.winfo_reqheight() // 2 - 90))
+        options_frame = tk.Frame(category_options_window)
+        options_frame.pack(side=tk.RIGHT, padx=10)
 
-        frame = tk.Frame(category_options_window)
-        frame.pack(expand=True, fill=tk.BOTH)
+        data_frame = tk.Frame(category_options_window)
+        data_frame.pack(side=tk.LEFT, padx=10)
 
-        tk.Button(frame, text="Agregar Categoría", command=self.add_category).pack(pady=10)
-        tk.Button(frame, text="Eliminar Categoría", command=self.delete_category).pack(pady=10)
-        tk.Button(frame, text="Editar Categoría", command=self.edit_category).pack(pady=10)
-        tk.Button(frame, text="Buscar Categoría", command=self.search_category).pack(pady=10)
+        tk.Button(options_frame, text="Agregar Categoría", command=self.add_category_dialog).pack(pady=10)
+        tk.Button(options_frame, text="Eliminar Categoría", command=self.delete_category).pack(pady=10)
+        tk.Button(options_frame, text="Editar Categoría", command=self.edit_category).pack(pady=10)
+        self.display_category_data(data_frame)
+        
+        
+    def display_category_data(self, frame):
+        categories = self.categories_collection.find()
+        category_list = []
 
-    def add_category(self):
-        # Lógica para agregar una categoría
-        messagebox.showinfo("Agregar Categoría", "Lógica para agregar una categoría")
+        for category in categories:
+            category_name = category.get('name', 'N/A')
+            category_urls = category.get('urls', [])
+            category_urls_str = ', '.join(map(str, category_urls))
+            category_info = f"ID: {category['_id']}, Name: {category_name}, URLs: {category_urls_str}"
+
+            category_list.append(category_info)
+
+        # Limpiar el contenido anterior
+        for widget in frame.winfo_children():
+            widget.destroy()
+
+        listbox = tk.Listbox(frame, selectmode=tk.SINGLE, width=90, height=10)
+        listbox.pack()
+
+        if category_list:
+            for category_info in category_list:
+                listbox.insert(tk.END, category_info)
+        else:
+            listbox.insert(tk.END, "No categories found.")
+
+        # Guardar frame como atributo de instancia
+        self.category_data_frame = frame
+
+
+    def add_category_dialog(self):
+        add_category_dialog = tk.Toplevel(self.master)
+        add_category_dialog.title("Agregar Categoría")
+
+        tk.Label(add_category_dialog, text="Name:").grid(row=0, column=0, padx=10, pady=5)
+        name_entry = tk.Entry(add_category_dialog)
+        name_entry.grid(row=0, column=1, padx=10, pady=5)
+
+        tk.Button(add_category_dialog, text="Add Category", command=lambda: self.add_category(name_entry.get(), add_category_dialog)).grid(row=2, column=0, columnspan=2, pady=10)
+
+
+    def add_category(self, name, add_category_dialog):
+        if name:
+            try:
+                category_data = {"name": name, "url": []}  # Agregamos "url": [] por defecto
+                result = self.categories_collection.insert_one(category_data)
+                messagebox.showinfo("Todo bien,", f"Categoría {name} añadida con un ID: {result.inserted_id}")
+
+                # Llamada a la función para mostrar la información actualizada
+                self.display_category_data(self.category_data_frame)
+
+                add_category_dialog.destroy()
+            except errors.PyMongoError as e:
+                messagebox.showerror("Error :c", f"Error al añadir la categoría {e}")
+        else:
+            messagebox.showwarning("¡Aguas!", "Por favor llena el nombre de la categoría.")
+
 
     def delete_category(self):
-        # Lógica para eliminar una categoría
-        messagebox.showinfo("Eliminar Categoría", "Lógica para eliminar una categoría")
+        # Verificar si hay una categoría seleccionada
+        selection = self.category_data_frame.winfo_children()[0].curselection()
+        if not selection:
+            messagebox.showwarning("¡Aguas!", "Por favor selecciona una categoría para eliminarla.")
+            return
+
+        # Confirmar la eliminación de la categoría
+        response = messagebox.askyesno("Confirmar", "¿Estás seguro de que quieres eliminar la categoría seleccionada?")
+        if response:
+            # Obtener el ID de la categoría seleccionada
+            selected_category = self.category_data_frame.winfo_children()[0].get(selection[0])
+            category_id = selected_category.split(",")[0].split(":")[1].strip()
+
+            try:
+                # Eliminar la categoría
+                result = self.categories_collection.delete_one({"_id": ObjectId(category_id)})
+                if result.deleted_count:
+                    messagebox.showinfo("Éxito", "Categoría eliminada correctamente.")
+
+                    # Actualizar la colección de artículos para eliminar la referencia a la categoría
+                    updated_articles = self.articles_collection.update_many(
+                        {"categories": ObjectId(category_id)},
+                        {"$pull": {"categories": ObjectId(category_id)}}
+                    )
+
+                    # Mostrar el mensaje de actualización
+                    messagebox.showinfo("Éxito", f"Se han actualizado {updated_articles.modified_count} artículos para eliminar la referencia a la categoría eliminada.")
+
+                else:
+                    messagebox.showwarning("Error", "La categoría no pudo ser eliminada.")
+
+                # Actualizar la lista de categorías
+                self.display_category_data(self.category_data_frame)
+
+            except errors.PyMongoError as e:
+                messagebox.showerror("Error", f"Error al eliminar la categoría: {e}")
 
     def edit_category(self):
-        # Lógica para editar una categoría
-        messagebox.showinfo("Editar Categoría", "Lógica para editar una categoría")
+        # Verificar si hay una categoría seleccionada
+        selection = self.category_data_frame.winfo_children()[0].curselection()
+        if not selection:
+            messagebox.showwarning("¡Aguas!", "Por favor selecciona una categoría para editar.")
+            return
 
-    def search_category(self):
-        # Lógica para buscar una categoría
-        messagebox.showinfo("Buscar Categoría", "Lógica para buscar una categoría")
+        # Obtener el ID de la categoría seleccionada
+        selected_category_info = self.category_data_frame.winfo_children()[0].get(selection[0])
+        category_id = selected_category_info.split(",")[0].split(":")[1].strip()
 
+        try:
+            # Buscar los datos de la categoría
+            category_data = self.categories_collection.find_one({"_id": ObjectId(category_id)})
+            if not category_data:
+                messagebox.showwarning("Error", "La categoría no pudo ser encontrada.")
+                return
+
+            # Abrir una nueva ventana de diálogo con los campos de la categoría
+            edit_category_dialog = tk.Toplevel(self.master)
+            edit_category_dialog.title("Editar Categoría")
+
+            # Nombre
+            tk.Label(edit_category_dialog, text="Nombre:").grid(row=0, column=0, padx=10, pady=5)
+            name_entry = tk.Entry(edit_category_dialog)
+            name_entry.grid(row=0, column=1, padx=10, pady=5)
+            name_entry.insert(0, category_data.get('name', ''))
+
+            # Botón para guardar los cambios
+            tk.Button(edit_category_dialog, text="Guardar Cambios",
+                    command=lambda: self.update_category(category_id, name_entry.get(), edit_category_dialog)).grid(row=1, column=0, columnspan=2, pady=10)
+
+        except errors.PyMongoError as e:
+            messagebox.showerror("Error", f"Error al recuperar la categoría para editar: {e}")
+
+
+    def update_category(self, category_id, name, edit_category_dialog):
+        # Verificar que los campos no estén vacíos
+        if not name:
+            messagebox.showwarning("¡Aguas!", "El nombre de la categoría no puede estar vacío.")
+            return
+
+        try:
+            # Obtener datos antiguos de la categoría
+            old_category_data = self.categories_collection.find_one({"_id": ObjectId(category_id)})
+
+            # Actualizar los datos de la categoría
+            self.categories_collection.update_one({"_id": ObjectId(category_id)}, {"$set": {"name": name}})
+            messagebox.showinfo("Éxito", "Categoría actualizada correctamente.")
+
+            # Actualizar la lista de categorías y cerrar la ventana de diálogo
+            self.display_category_data(self.category_data_frame)
+            edit_category_dialog.destroy()
+
+            # Actualizar la categoría en los artículos
+            articles_with_category = self.articles_collection.find({"categories": category_id})
+            for article in articles_with_category:
+                updated_categories = [cat_id if cat_id != category_id else str(old_category_data["_id"]) for cat_id in article['categories']]
+                self.articles_collection.update_one(
+                    {"_id": article["_id"]},
+                    {"$set": {"categories": updated_categories}}
+                )
+
+        except errors.PyMongoError as e:
+            messagebox.showerror("Error", f"Error al actualizar la categoría: {e}")
+
+#Comments
     def show_comment_options(self):
         comment_options_window = tk.Toplevel(self.master)
         comment_options_window.title("Opciones de Comentarios")
 
-        comment_options_window.geometry("300x250+{}+{}".format(
-            self.master.winfo_rootx() + self.master.winfo_reqwidth() // 2 - 200,
-            self.master.winfo_rooty() + self.master.winfo_reqheight() // 2 - 90))
+        options_frame = tk.Frame(comment_options_window)
+        options_frame.pack(side=tk.RIGHT, padx=10)
 
-        frame = tk.Frame(comment_options_window)
-        frame.pack(expand=True, fill=tk.BOTH)
+        data_frame = tk.Frame(comment_options_window)
+        data_frame.pack(side=tk.LEFT, padx=10)
 
-        tk.Button(frame, text="Agregar Comentario", command=self.add_comment).pack(pady=10)
-        tk.Button(frame, text="Eliminar Comentario", command=self.delete_comment).pack(pady=10)
-        tk.Button(frame, text="Editar Comentario", command=self.edit_comment).pack(pady=10)
-        tk.Button(frame, text="Buscar Comentario", command=self.search_comment).pack(pady=10)
+        tk.Button(options_frame, text="Agregar Comentario", command=self.add_comment_dialog).pack(pady=10)
+        tk.Button(options_frame, text="Eliminar Comentario", command=self.delete_comment).pack(pady=10)
+        tk.Button(options_frame, text="Editar Comentario", command=self.edit_comment).pack(pady=10)
+        self.display_comment_data(data_frame)
 
-    def add_comment(self):
-        # Lógica para agregar un Comentario
-        messagebox.showinfo("Agregar Comentario", "Lógica para agregar un Comentario")
+    def display_comment_data(self, frame):
+        comments = self.comments_collection.find()
+        comment_list = []
+
+        for comment in comments:
+            user_name = comment.get('user_name', 'N/A')
+            text = comment.get('text', 'N/A')
+            article_title = comment.get('article_title', 'N/A')
+            comment_info = f"ID: {comment['_id']}, Usuario: {user_name}, Comentario: {text}, En el Articulo: {article_title}"
+
+            comment_list.append(comment_info)
+
+        # Limpiar el contenido anterior
+        for widget in frame.winfo_children():
+            widget.destroy()
+
+        listbox = tk.Listbox(frame, selectmode=tk.SINGLE, width=90, height=10)
+        listbox.pack()
+
+        if comment_list:
+            for comment_info in comment_list:
+                listbox.insert(tk.END, comment_info)
+        else:
+            listbox.insert(tk.END, "No comments found.")
+
+        # Guardar frame como atributo de instancia
+        self.comment_data_frame = frame
+
+    def add_comment_dialog(self):
+        add_comment_dialog = tk.Toplevel(self.master)
+        add_comment_dialog.title("Agregar Comentario")
+
+        tk.Label(add_comment_dialog, text="Usuario:").grid(row=0, column=0, padx=10, pady=5)
+        user_entry = tk.Entry(add_comment_dialog)
+        user_entry.grid(row=0, column=1, padx=10, pady=5)
+
+        tk.Label(add_comment_dialog, text="Comentario:").grid(row=1, column=0, padx=10, pady=5)
+        text_entry = tk.Entry(add_comment_dialog)
+        text_entry.grid(row=1, column=1, padx=10, pady=5)
+
+        tk.Label(add_comment_dialog, text="En el Articulo:").grid(row=2, column=0, padx=10, pady=5)
+        article_title_entry = tk.Entry(add_comment_dialog)
+        article_title_entry.grid(row=2, column=1, padx=10, pady=5)
+
+        tk.Button(add_comment_dialog, text="Agregar Comentario", command=lambda: self.add_comment_logic(user_entry.get(), text_entry.get(), article_title_entry.get(), add_comment_dialog)).grid(row=3, column=0, columnspan=2, pady=10)
+
+    # Resto de las funciones de comentarios
+
+    def add_comment_logic(self, user_name, text, article_title, add_comment_dialog):
+        if user_name and text:
+            try:
+                comment_data = {"user_name": user_name, "text": text, "article_title": article_title}
+                result = self.comments_collection.insert_one(comment_data)
+                messagebox.showinfo("Todo bien,", f"Comentario agregado con ID: {result.inserted_id}")
+
+                # Llamada a la función para mostrar la información actualizada
+                self.display_comment_data(self.comment_data_frame)
+
+                add_comment_dialog.destroy()
+            except errors.PyMongoError as e:
+                messagebox.showerror("Error", f"Error al agregar el comentario: {e}")
+        else:
+            messagebox.showwarning("¡Aguas!", "Por favor llena el nombre del usuario y el texto del comentario.")
 
     def delete_comment(self):
-        # Lógica para eliminar una Comentario
-        messagebox.showinfo("Eliminar Comentario", "Lógica para eliminar un Comentario")
+        # Verificar si hay un comentario seleccionado
+        selection = self.comment_data_frame.winfo_children()[0].curselection()
+        if not selection:
+            messagebox.showwarning("¡Aguas!", "Por favor selecciona un comentario para eliminarlo.")
+            return
+
+        # Confirmar la eliminación del comentario
+        response = messagebox.askyesno("Confirmar", "¿Estás seguro de que quieres eliminar el comentario seleccionado?")
+        if response:
+            # Obtener el ID del comentario seleccionado
+            selected_comment = self.comment_data_frame.winfo_children()[0].get(selection[0])
+            comment_id = selected_comment.split(",")[0].split(":")[1].strip()
+
+            try:
+                # Eliminar el comentario
+                result = self.comments_collection.delete_one({"_id": ObjectId(comment_id)})
+                if result.deleted_count:
+                    messagebox.showinfo("Éxito", "Comentario eliminado correctamente.")
+                else:
+                    messagebox.showwarning("Error", "El comentario no pudo ser eliminado.")
+
+                # Actualizar la lista de comentarios
+                self.display_comment_data(self.comment_data_frame)
+
+            except errors.PyMongoError as e:
+                messagebox.showerror("Error", f"Error al eliminar el comentario: {e}")
 
     def edit_comment(self):
-        # Lógica para editar una Comentario
-        messagebox.showinfo("Editar Comentario", "Lógica para editar un Comentario")
+        # Verificar si hay un comentario seleccionado
+        selection = self.comment_data_frame.winfo_children()[0].curselection()
+        if not selection:
+            messagebox.showwarning("¡Aguas!", "Por favor selecciona un comentario para editarlo.")
+            return
+
+        # Obtener el ID del comentario seleccionado
+        selected_comment_info = self.comment_data_frame.winfo_children()[0].get(selection[0])
+        comment_id = selected_comment_info.split(",")[0].split(":")[1].strip()
+
+        try:
+            # Buscar los datos del comentario
+            comment_data = self.comments_collection.find_one({"_id": ObjectId(comment_id)})
+            if not comment_data:
+                messagebox.showwarning("Error", "El comentario no pudo ser encontrado.")
+                return
+
+            # Abrir una nueva ventana de diálogo con los campos del comentario
+            edit_comment_dialog = tk.Toplevel(self.master)
+            edit_comment_dialog.title("Editar Comentario")
+
+            # Usuario
+            tk.Label(edit_comment_dialog, text="Usuario:").grid(row=0, column=0, padx=10, pady=5)
+            user_entry = tk.Entry(edit_comment_dialog)
+            user_entry.grid(row=0, column=1, padx=10, pady=5)
+            user_entry.insert(0, comment_data.get('user_name', ''))
+
+            # Comentario
+            tk.Label(edit_comment_dialog, text="Comentario:").grid(row=1, column=0, padx=10, pady=5)
+            text_entry = tk.Entry(edit_comment_dialog)
+            text_entry.grid(row=1, column=1, padx=10, pady=5)
+            text_entry.insert(0, comment_data.get('text', ''))
+
+            # En el Articulo
+            tk.Label(edit_comment_dialog, text="En el Articulo:").grid(row=2, column=0, padx=10, pady=5)
+            article_title_entry = tk.Entry(edit_comment_dialog)
+            article_title_entry.grid(row=2, column=1, padx=10, pady=5)
+            article_title_entry.insert(0, comment_data.get('article_title', ''))
+
+            tk.Button(edit_comment_dialog, text="Guardar Cambios", command=lambda: self.update_comment(comment_id, user_entry.get(), text_entry.get(), article_title_entry.get(), edit_comment_dialog)).grid(row=3, column=0, columnspan=2, pady=10)
+
+        except errors.PyMongoError as e:
+            messagebox.showerror("Error", f"Error al recuperar el comentario para editar: {e}")
+
+    def update_comment(self, comment_id, user_name, text, article_title, edit_comment_dialog):
+        # Verificar que los campos no estén vacíos
+        if not user_name or not text:
+            messagebox.showwarning("¡Aguas!", "El nombre del usuario y el texto del comentario no pueden estar vacíos.")
+            return
+
+        try:
+            # Obtener datos antiguos del comentario
+            old_comment_data = self.comments_collection.find_one({"_id": ObjectId(comment_id)})
+
+            # Actualizar los datos del comentario
+            self.comments_collection.update_one({"_id": ObjectId(comment_id)}, {"$set": {"user_name": user_name, "text": text, "article_title": article_title}})
+            messagebox.showinfo("Éxito", "Comentario actualizado correctamente.")
+
+            # Actualizar la lista de comentarios y cerrar la ventana de diálogo
+            self.display_comment_data(self.comment_data_frame)
+            edit_comment_dialog.destroy()
+
+        except errors.PyMongoError as e:
+            messagebox.showerror("Error", f"Error al actualizar el comentario: {e}")
 
     def search_comment(self):
-        # Lógica para buscar una Comentario
-        messagebox.showinfo("Buscar Comentario", "Lógica para buscar un Comentario")
+        search_comment_dialog = tk.Toplevel(self.master)
+        search_comment_dialog.title("Buscar Comentario")
 
+        tk.Label(search_comment_dialog, text="ID del Comentario:").grid(row=0, column=0, padx=10, pady=5)
+        comment_id_entry = tk.Entry(search_comment_dialog)
+        comment_id_entry.grid(row=0, column=1, padx=10, pady=5)
+
+        tk.Button(search_comment_dialog, text="Buscar", command=lambda: self.search_comment_logic(comment_id_entry.get(), search_comment_dialog)).grid(row=1, column=0, columnspan=2, pady=10)
+
+    def search_comment_logic(self, comment_id, search_comment_dialog):
+        if comment_id:
+            try:
+                comment_data = self.comments_collection.find_one({"_id": ObjectId(comment_id)})
+                if comment_data:
+                    messagebox.showinfo("Resultado de la Búsqueda", f"Usuario: {comment_data.get('user_name', 'N/A')}\nComentario: {comment_data.get('text', 'N/A')}\nEn el Articulo: {comment_data.get('article_title', 'N/A')}")
+                else:
+                    messagebox.showinfo("Resultado de la Búsqueda", "Comentario no encontrado.")
+
+                search_comment_dialog.destroy()
+            except errors.PyMongoError as e:
+                messagebox.showerror("Error", f"Error al buscar el comentario: {e}")
+        else:
+            messagebox.showwarning("¡Aguas!", "Por favor ingresa el ID del comentario para buscarlo.")
+
+#Tags
     def show_tag_options(self):
         tag_options_window = tk.Toplevel(self.master)
-        tag_options_window.title("Opciones de Tags")
+        tag_options_window.title("Opciones para Etiqueta")
 
-        tag_options_window.geometry("300x250+{}+{}".format(
-            self.master.winfo_rootx() + self.master.winfo_reqwidth() // 2 - 200,
-            self.master.winfo_rooty() + self.master.winfo_reqheight() // 2 - 90))
+        options_frame = tk.Frame(tag_options_window)
+        options_frame.pack(side=tk.RIGHT, padx=10)
 
-        frame = tk.Frame(tag_options_window)
-        frame.pack(expand=True, fill=tk.BOTH)
+        data_frame = tk.Frame(tag_options_window)
+        data_frame.pack(side=tk.LEFT, padx=10)
 
-        tk.Button(frame, text="Agregar Tag", command=self.add_tag).pack(pady=10)
-        tk.Button(frame, text="Eliminar Tag", command=self.delete_tag).pack(pady=10)
-        tk.Button(frame, text="Editar Tag", command=self.edit_tag).pack(pady=10)
-        tk.Button(frame, text="Buscar Tag", command=self.search_tag).pack(pady=10)
+        tk.Button(options_frame, text="Agregar Etiqueta", command=self.add_tag_dialog).pack(pady=10)
+        tk.Button(options_frame, text="Eliminar Etiqueta", command=self.delete_tag).pack(pady=10)
+        tk.Button(options_frame, text="Editar Etiqueta", command=self.edit_tag).pack(pady=10)
+        self.display_tag_data(data_frame)
 
-    def add_tag(self):
-        # Lógica para agregar un Tag
-        messagebox.showinfo("Agregar Tag", "Lógica para agregar un tag")
+
+    def display_tag_data(self, frame):
+        tags = self.tags_collection.find()
+        tag_list = []
+
+        for tag in tags:
+            tag_name = tag.get('name', 'N/A')
+            tag_info = f"ID: {tag['_id']}, Name: {tag_name}"
+
+            tag_list.append(tag_info)
+
+        # Limpiar el contenido anterior
+        for widget in frame.winfo_children():
+            widget.destroy()
+
+        listbox = tk.Listbox(frame, selectmode=tk.SINGLE, width=50, height=10)
+        listbox.pack()
+
+        if tag_list:
+            for tag_info in tag_list:
+                listbox.insert(tk.END, tag_info)
+        else:
+            listbox.insert(tk.END, "No tags found.")
+
+        # Guardar frame como atributo de instancia
+        self.tag_data_frame = frame
+
+
+    def add_tag_dialog(self):
+        add_tag_dialog = tk.Toplevel(self.master)
+        add_tag_dialog.title("Agregar Etiqueta")
+
+        tk.Label(add_tag_dialog, text="Nombre:").grid(row=0, column=0, padx=10, pady=5)
+        name_entry = tk.Entry(add_tag_dialog)
+        name_entry.grid(row=0, column=1, padx=10, pady=5)
+
+        tk.Button(add_tag_dialog, text="Agregar Etiqueta", command=lambda: self.add_tag(name_entry.get(), add_tag_dialog)).grid(row=1, column=0, columnspan=2, pady=10)
+
+
+    def add_tag(self, name, add_tag_dialog):
+        if name:
+            try:
+                tag_data = {"name": name}
+                result = self.tags_collection.insert_one(tag_data)
+                messagebox.showinfo("Éxito", f"Etiqueta {name} añadida con un ID: {result.inserted_id}")
+
+                # Llamada a la función para mostrar la información actualizada
+                self.display_tag_data(self.tag_data_frame)
+
+                add_tag_dialog.destroy()
+            except errors.PyMongoError as e:
+                messagebox.showerror("Error", f"Error al añadir la etiqueta: {e}")
+        else:
+            messagebox.showwarning("¡Aguas!", "Por favor llena el nombre de la etiqueta.")
+
 
     def delete_tag(self):
-        # Lógica para eliminar un tag
-        messagebox.showinfo("Eliminar Tag", "Lógica para eliminar un tag")
+        # Verificar si hay una etiqueta seleccionada
+        selection = self.tag_data_frame.winfo_children()[0].curselection()
+        if not selection:
+            messagebox.showwarning("¡Aguas!", "Por favor selecciona una etiqueta para eliminarla.")
+            return
+
+        # Confirmar la eliminación de la etiqueta
+        response = messagebox.askyesno("Confirmar", "¿Estás seguro de que quieres eliminar la etiqueta seleccionada?")
+        if response:
+            # Obtener el ID de la etiqueta seleccionada
+            selected_tag_info = self.tag_data_frame.winfo_children()[0].get(selection[0])
+            tag_id = selected_tag_info.split(",")[0].split(":")[1].strip()
+
+            try:
+                # Eliminar la etiqueta
+                result = self.tags_collection.delete_one({"_id": ObjectId(tag_id)})
+                if result.deleted_count:
+                    messagebox.showinfo("Éxito", "Etiqueta eliminada correctamente.")
+
+                    # Actualizar la colección de artículos para eliminar la referencia a la etiqueta
+                    updated_articles = self.articles_collection.update_many(
+                        {"tags": ObjectId(tag_id)},
+                        {"$pull": {"tags": ObjectId(tag_id)}}
+                    )
+
+                    # Mostrar el mensaje de actualización
+                    messagebox.showinfo("Éxito", f"Se han actualizado {updated_articles.modified_count} artículos para eliminar la referencia a la etiqueta eliminada.")
+                else:
+                    messagebox.showwarning("Error", "La etiqueta no pudo ser eliminada.")
+
+                # Actualizar la lista de etiquetas
+                self.display_tag_data(self.tag_data_frame)
+
+            except errors.PyMongoError as e:
+                messagebox.showerror("Error", f"Error al eliminar la etiqueta: {e}")
+
 
     def edit_tag(self):
-        # Lógica para editar un tag
-        messagebox.showinfo("Editar Tag", "Lógica para editar un tag")
+        # Verificar si hay una etiqueta seleccionada
+        selection = self.tag_data_frame.winfo_children()[0].curselection()
+        if not selection:
+            messagebox.showwarning("¡Aguas!", "Por favor selecciona una etiqueta para editar.")
+            return
 
-    def search_tag(self):
-        # Lógica para buscar un tag
-        messagebox.showinfo("Buscar Tag", "Lógica para buscar un tag")
+        # Obtener el ID de la etiqueta seleccionada
+        selected_tag_info = self.tag_data_frame.winfo_children()[0].get(selection[0])
+        tag_id = selected_tag_info.split(",")[0].split(":")[1].strip()
 
+        try:
+            # Buscar los datos de la etiqueta
+            tag_data = self.tags_collection.find_one({"_id": ObjectId(tag_id)})
+            if not tag_data:
+                messagebox.showwarning("Error", "La etiqueta no pudo ser encontrada.")
+                return
+
+            # Abrir una nueva ventana de diálogo con los campos de la etiqueta
+            edit_tag_dialog = tk.Toplevel(self.master)
+            edit_tag_dialog.title("Editar Etiqueta")
+
+            # Nombre
+            tk.Label(edit_tag_dialog, text="Nombre:").grid(row=0, column=0, padx=10, pady=5)
+            name_entry = tk.Entry(edit_tag_dialog)
+            name_entry.grid(row=0, column=1, padx=10, pady=5)
+            name_entry.insert(0, tag_data.get('name', ''))
+
+            # Botón para guardar los cambios
+            tk.Button(edit_tag_dialog, text="Guardar Cambios",
+                    command=lambda: self.update_tag(tag_id, name_entry.get(), edit_tag_dialog)).grid(row=1, column=0, columnspan=2, pady=10)
+
+        except errors.PyMongoError as e:
+            messagebox.showerror("Error", f"Error al recuperar la etiqueta para editar: {e}")
+
+
+    def update_tag(self, tag_id, name, edit_tag_dialog):
+    # Verificar que los campos no estén vacíos
+        if not name:
+            messagebox.showwarning("¡Aguas!", "El nombre de la etiqueta no puede estar vacío.")
+            return
+
+        try:
+            # Obtener datos antiguos de la etiqueta
+            old_tag_data = self.tags_collection.find_one({"_id": ObjectId(tag_id)})
+
+            # Actualizar los datos de la etiqueta
+            self.tags_collection.update_one({"_id": ObjectId(tag_id)}, {"$set": {"name": name}})
+            messagebox.showinfo("Éxito", "Etiqueta actualizada correctamente.")
+
+            # Actualizar la lista de etiquetas y cerrar la ventana de diálogo
+            self.display_tag_data(self.tag_data_frame)
+            edit_tag_dialog.destroy()
+
+            # Actualizar la etiqueta en los artículos
+            articles_with_tag = self.articles_collection.find({"tags": tag_id})
+            for article in articles_with_tag:
+                updated_tags = [tag_id if tag_id != tag_id else str(old_tag_data["_id"]) for tag_id in article['tags']]
+                self.articles_collection.update_one(
+                    {"_id": article["_id"]},
+                    {"$set": {"tags": updated_tags}}
+                )
+
+        except errors.PyMongoError as e:
+            messagebox.showerror("Error", f"Error al actualizar la etiqueta: {e}")
+
+#Articles
     def show_article_options(self):
         article_options_window = tk.Toplevel(self.master)
         article_options_window.title("Opciones de Artículos")
@@ -519,9 +978,6 @@ class BlogInterface:
             {"$pull": {"urls": article_id}}
         )
 
-
-
-
     def delete_article(self):
       
         # Verificar si hay un artículo seleccionado
@@ -649,9 +1105,8 @@ class BlogInterface:
 
         # Selección de usuario
         tk.Label(add_comment_dialog, text="Seleccione el usuario:").grid(row=0, column=0, sticky="w")
-        users_listbox = tk.Listbox(add_comment_dialog)
+        users_listbox = tk.Listbox(add_comment_dialog, width=45)
         users_listbox.grid(row=0, column=1, pady=5)
-
         # Rellenar la lista de usuarios
         users = self.users_collection.find()
         for user in users:
