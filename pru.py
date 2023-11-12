@@ -47,6 +47,8 @@ class BlogInterface:
         tk.Button(options_frame, text="Agregar Usuario", command=self.add_user_dialog).pack(pady=10)
         tk.Button(options_frame, text="Eliminar Usuario", command=self.delete_user).pack(pady=10)
         tk.Button(options_frame, text="Editar Usuario", command=self.edit_user).pack(pady=10)
+        tk.Button(options_frame, text="Mostrar Artículos con esta categoria", command=self.show_articles_with_category).pack(pady=10)
+
         self.display_user_data(data_frame)
 
     def display_user_data(self, frame):
@@ -215,6 +217,7 @@ class BlogInterface:
         tk.Button(options_frame, text="Agregar Categoría", command=self.add_category_dialog).pack(pady=10)
         tk.Button(options_frame, text="Eliminar Categoría", command=self.delete_category).pack(pady=10)
         tk.Button(options_frame, text="Editar Categoría", command=self.edit_category).pack(pady=10)
+        tk.Button(options_frame, text="Mostrar Artículos con Categoría", command=self.show_articles_with_category).pack()
         self.display_category_data(data_frame)
         
         
@@ -379,6 +382,36 @@ class BlogInterface:
         except errors.PyMongoError as e:
             messagebox.showerror("Error", f"Error al actualizar la categoría: {e}")
 
+    def show_articles_with_category(self):
+        # Verificar si hay una categoría seleccionada
+        selection = self.category_data_frame.winfo_children()[0].curselection()
+        if not selection:
+            messagebox.showwarning("¡Aguas!", "Por favor selecciona una categoría para ver los artículos.")
+            return
+
+        try:
+            # Obtener el ID de la categoría seleccionada
+            selected_category_info = self.category_data_frame.winfo_children()[0].get(selection[0])
+            category_id = selected_category_info.split(",")[0].split(":")[1].strip()
+
+            # Buscar los artículos con la categoría específica
+            articles_with_category = self.articles_collection.find({"categories": ObjectId(category_id)})
+
+            # Crear una nueva ventana para mostrar los artículos con la categoría
+            articles_with_category_dialog = tk.Toplevel(self.master)
+            articles_with_category_dialog.title("Artículos con Categoría")
+
+            # Crear un widget para mostrar la lista de artículos con la categoría
+            articles_listbox = tk.Listbox(articles_with_category_dialog, width=50, height=10)
+            articles_listbox.pack(pady=10)
+
+            # Mostrar los títulos de los artículos en el widget
+            for article in articles_with_category:
+                articles_listbox.insert(tk.END, article.get('title', 'N/A'))
+
+        except errors.PyMongoError as e:
+            messagebox.showerror("Error", f"Error al recuperar artículos con la categoría: {e}")
+
 #Comments
     def show_comment_options(self):
         comment_options_window = tk.Toplevel(self.master)
@@ -427,27 +460,73 @@ class BlogInterface:
         add_comment_dialog = tk.Toplevel(self.master)
         add_comment_dialog.title("Agregar Comentario")
 
-        tk.Label(add_comment_dialog, text="Usuario:").grid(row=0, column=0, padx=10, pady=5)
-        user_entry = tk.Entry(add_comment_dialog)
-        user_entry.grid(row=0, column=1, padx=10, pady=5)
+        # Lista de correos electrónicos
+        tk.Label(add_comment_dialog, text="Correo Electrónico:").grid(row=0, column=0, padx=10, pady=5)
+        user_emails = [user['email'] for user in self.users_collection.find()]
+        selected_user_email = tk.StringVar(add_comment_dialog)
+        user_email_menu = tk.OptionMenu(add_comment_dialog, selected_user_email, *user_emails)
+        user_email_menu.grid(row=0, column=1, padx=10, pady=5)
 
+        # Campo de texto para el comentario
         tk.Label(add_comment_dialog, text="Comentario:").grid(row=1, column=0, padx=10, pady=5)
         text_entry = tk.Entry(add_comment_dialog)
         text_entry.grid(row=1, column=1, padx=10, pady=5)
 
+        # Lista de títulos de artículos
         tk.Label(add_comment_dialog, text="En el Articulo:").grid(row=2, column=0, padx=10, pady=5)
-        article_title_entry = tk.Entry(add_comment_dialog)
-        article_title_entry.grid(row=2, column=1, padx=10, pady=5)
+        article_titles = [article['title'] for article in self.articles_collection.find()]
+        selected_article_title = tk.StringVar(add_comment_dialog)
+        article_title_menu = tk.OptionMenu(add_comment_dialog, selected_article_title, *article_titles)
+        article_title_menu.grid(row=2, column=1, padx=10, pady=5)
 
-        tk.Button(add_comment_dialog, text="Agregar Comentario", command=lambda: self.add_comment_logic(user_entry.get(), text_entry.get(), article_title_entry.get(), add_comment_dialog)).grid(row=3, column=0, columnspan=2, pady=10)
+        tk.Button(add_comment_dialog, text="Agregar Comentario",
+                command=lambda: self.add_comment_logic(selected_user_email.get(), text_entry.get(), selected_article_title.get(), add_comment_dialog)).grid(row=3, column=0, columnspan=2, pady=10)
 
-    # Resto de las funciones de comentarios
 
-    def add_comment_logic(self, user_name, text, article_title, add_comment_dialog):
-        if user_name and text:
+    def add_comment_logic(self, user_email, text, article_title, add_comment_dialog):
+        if user_email and text and article_title:
             try:
-                comment_data = {"user_name": user_name, "text": text, "article_title": article_title}
+                # Buscar el ID del usuario asociado al correo electrónico
+                user = self.users_collection.find_one({"email": user_email})
+                if not user:
+                    messagebox.showerror("Error", "Usuario no encontrado.")
+                    return
+
+                user_id = user['_id']
+                user_name = user['name']
+
+                # Buscar el artículo por título
+                article = self.articles_collection.find_one({"title": article_title})
+                if not article:
+                    messagebox.showerror("Error", "Artículo no encontrado.")
+                    return
+
+                article_id = article['_id']
+
+                # Crear el comentario asociado al artículo
+                comment_data = {
+                    "article_id": article_id,
+                    "article_title": article_title,
+                    "user_id": user_id,
+                    "user_name": user_name,
+                    "user_email": user_email,
+                    "text": text
+                }
+
                 result = self.comments_collection.insert_one(comment_data)
+
+                # Actualizar la colección de artículos con la referencia del nuevo comentario
+                self.articles_collection.update_one(
+                    {"_id": article_id},
+                    {"$push": {"comments": result.inserted_id}}
+                )
+
+                # Actualizar la colección de usuarios con la referencia del nuevo comentario
+                self.users_collection.update_one(
+                    {"_id": user_id},
+                    {"$push": {"comments": result.inserted_id}}
+                )
+
                 messagebox.showinfo("Todo bien,", f"Comentario agregado con ID: {result.inserted_id}")
 
                 # Llamada a la función para mostrar la información actualizada
@@ -457,7 +536,8 @@ class BlogInterface:
             except errors.PyMongoError as e:
                 messagebox.showerror("Error", f"Error al agregar el comentario: {e}")
         else:
-            messagebox.showwarning("¡Aguas!", "Por favor llena el nombre del usuario y el texto del comentario.")
+            messagebox.showwarning("¡Aguas!", "Por favor llena todos los campos.") 
+
 
     def delete_comment(self):
         # Verificar si hay un comentario seleccionado
@@ -509,41 +589,65 @@ class BlogInterface:
             edit_comment_dialog = tk.Toplevel(self.master)
             edit_comment_dialog.title("Editar Comentario")
 
-            # Usuario
-            tk.Label(edit_comment_dialog, text="Usuario:").grid(row=0, column=0, padx=10, pady=5)
-            user_entry = tk.Entry(edit_comment_dialog)
-            user_entry.grid(row=0, column=1, padx=10, pady=5)
-            user_entry.insert(0, comment_data.get('user_name', ''))
+            # Lista de correos electrónicos
+            tk.Label(edit_comment_dialog, text="Correo Electrónico:").grid(row=0, column=0, padx=10, pady=5)
+            user_emails = [user['email'] for user in self.users_collection.find()]
+            selected_user_email = tk.StringVar(edit_comment_dialog, value=comment_data.get('user_email', ''))
+            user_email_menu = tk.OptionMenu(edit_comment_dialog, selected_user_email, *user_emails)
+            user_email_menu.grid(row=0, column=1, padx=10, pady=5)
 
-            # Comentario
+            # Campo de texto para el comentario
             tk.Label(edit_comment_dialog, text="Comentario:").grid(row=1, column=0, padx=10, pady=5)
             text_entry = tk.Entry(edit_comment_dialog)
             text_entry.grid(row=1, column=1, padx=10, pady=5)
             text_entry.insert(0, comment_data.get('text', ''))
 
-            # En el Articulo
+            # Lista de títulos de artículos
             tk.Label(edit_comment_dialog, text="En el Articulo:").grid(row=2, column=0, padx=10, pady=5)
-            article_title_entry = tk.Entry(edit_comment_dialog)
-            article_title_entry.grid(row=2, column=1, padx=10, pady=5)
-            article_title_entry.insert(0, comment_data.get('article_title', ''))
+            article_titles = [article['title'] for article in self.articles_collection.find()]
+            selected_article_title = tk.StringVar(edit_comment_dialog, value=comment_data.get('article_title', ''))
+            article_title_menu = tk.OptionMenu(edit_comment_dialog, selected_article_title, *article_titles)
+            article_title_menu.grid(row=2, column=1, padx=10, pady=5)
 
-            tk.Button(edit_comment_dialog, text="Guardar Cambios", command=lambda: self.update_comment(comment_id, user_entry.get(), text_entry.get(), article_title_entry.get(), edit_comment_dialog)).grid(row=3, column=0, columnspan=2, pady=10)
+            tk.Button(edit_comment_dialog, text="Guardar Cambios",
+                    command=lambda: self.update_comment(comment_id, selected_user_email.get(), text_entry.get(), selected_article_title.get(), edit_comment_dialog)).grid(row=3, column=0, columnspan=2, pady=10)
 
         except errors.PyMongoError as e:
             messagebox.showerror("Error", f"Error al recuperar el comentario para editar: {e}")
 
-    def update_comment(self, comment_id, user_name, text, article_title, edit_comment_dialog):
+
+    def update_comment(self, comment_id, user_email, text, article_title, edit_comment_dialog):
         # Verificar que los campos no estén vacíos
-        if not user_name or not text:
-            messagebox.showwarning("¡Aguas!", "El nombre del usuario y el texto del comentario no pueden estar vacíos.")
+        if not user_email or not text:
+            messagebox.showwarning("¡Aguas!", "El correo del usuario y el texto del comentario no pueden estar vacíos.")
             return
 
         try:
             # Obtener datos antiguos del comentario
             old_comment_data = self.comments_collection.find_one({"_id": ObjectId(comment_id)})
 
+            # Buscar el ID del usuario asociado al correo electrónico
+            user = self.users_collection.find_one({"email": user_email})
+            if not user:
+                messagebox.showerror("Error", "Usuario no encontrado.")
+                return
+
+            user_id = user['_id']
+            user_name = user['name']
+
+            # Buscar el artículo por título
+            article = self.articles_collection.find_one({"title": article_title})
+            if not article:
+                messagebox.showerror("Error", "Artículo no encontrado.")
+                return
+
+            article_id = article['_id']
+
             # Actualizar los datos del comentario
-            self.comments_collection.update_one({"_id": ObjectId(comment_id)}, {"$set": {"user_name": user_name, "text": text, "article_title": article_title}})
+            self.comments_collection.update_one(
+                {"_id": ObjectId(comment_id)},
+                {"$set": {"user_id": user_id, "user_name": user_name, "user_email": user_email, "text": text, "article_id": article_id, "article_title": article_title}}
+            )
             messagebox.showinfo("Éxito", "Comentario actualizado correctamente.")
 
             # Actualizar la lista de comentarios y cerrar la ventana de diálogo
@@ -552,16 +656,6 @@ class BlogInterface:
 
         except errors.PyMongoError as e:
             messagebox.showerror("Error", f"Error al actualizar el comentario: {e}")
-
-    def search_comment(self):
-        search_comment_dialog = tk.Toplevel(self.master)
-        search_comment_dialog.title("Buscar Comentario")
-
-        tk.Label(search_comment_dialog, text="ID del Comentario:").grid(row=0, column=0, padx=10, pady=5)
-        comment_id_entry = tk.Entry(search_comment_dialog)
-        comment_id_entry.grid(row=0, column=1, padx=10, pady=5)
-
-        tk.Button(search_comment_dialog, text="Buscar", command=lambda: self.search_comment_logic(comment_id_entry.get(), search_comment_dialog)).grid(row=1, column=0, columnspan=2, pady=10)
 
     def search_comment_logic(self, comment_id, search_comment_dialog):
         if comment_id:
@@ -592,6 +686,7 @@ class BlogInterface:
         tk.Button(options_frame, text="Agregar Etiqueta", command=self.add_tag_dialog).pack(pady=10)
         tk.Button(options_frame, text="Eliminar Etiqueta", command=self.delete_tag).pack(pady=10)
         tk.Button(options_frame, text="Editar Etiqueta", command=self.edit_tag).pack(pady=10)
+        tk.Button(options_frame, text="Mostrar Artículos con Etiqueta", command=self.show_articles_with_tag).pack(pady=10)
         self.display_tag_data(data_frame)
 
 
@@ -754,6 +849,36 @@ class BlogInterface:
         except errors.PyMongoError as e:
             messagebox.showerror("Error", f"Error al actualizar la etiqueta: {e}")
 
+    def show_articles_with_tag(self):
+        # Verificar si hay una etiqueta seleccionada
+        selection = self.tag_data_frame.winfo_children()[0].curselection()
+        if not selection:
+            messagebox.showwarning("¡Aguas!", "Por favor selecciona una etiqueta para eliminarla.")
+            return
+        try:
+            # Obtener el ID de la etiqueta seleccionada
+            selected_tag_info = self.tag_data_frame.winfo_children()[0].get(selection[0])
+            tag_id = selected_tag_info.split(",")[0].split(":")[1].strip()
+            # Buscar los artículos con la etiqueta específica
+            articles_with_tag = self.articles_collection.find({"tags": ObjectId(tag_id)})
+
+            # Crear una nueva ventana para mostrar los artículos con la etiqueta
+            articles_with_tag_dialog = tk.Toplevel(self.master)
+            articles_with_tag_dialog.title("Artículos con Etiqueta")
+
+            # Crear un widget para mostrar la lista de artículos con la etiqueta
+            articles_listbox = tk.Listbox(articles_with_tag_dialog, width=50, height=10)
+            articles_listbox.pack(pady=10)
+
+            # Mostrar los títulos de los artículos en el widget
+            for article in articles_with_tag:
+                articles_listbox.insert(tk.END, article.get('title', 'N/A'))
+
+        except errors.PyMongoError as e:
+            messagebox.showerror("Error", f"Error al recuperar artículos con la etiqueta: {e}")
+
+
+
 #Articles
     def show_article_options(self):
         article_options_window = tk.Toplevel(self.master)
@@ -801,39 +926,46 @@ class BlogInterface:
         if not selection:
             messagebox.showwarning("¡Aguas!", "Por favor selecciona un artículo para verlo.")
             return
-        
+
         # Obtener el ID del artículo seleccionado
         selected_article_info = self.article_data_frame.winfo_children()[0].get(selection[0])
         article_id = selected_article_info.split(",")[0].split(":")[1].strip()
-        
+
         try:
             # Buscar la información del artículo en la base de datos
             article = self.articles_collection.find_one({"_id": ObjectId(article_id)})
             if not article:
                 messagebox.showerror("Error", "Artículo no encontrado.")
                 return
-            
+
+            # Obtener el nombre del usuario que hizo el artículo
+            user = self.users_collection.find_one({"_id": article['user_id']})
+
             # Crear una nueva ventana para mostrar el artículo
             view_article_dialog = tk.Toplevel(self.master)
             view_article_dialog.title("Ver Artículo")
 
-            # Mostrar título y contenido del artículo
+            # Mostrar título y autor del artículo
             tk.Label(view_article_dialog, text="Título:").grid(row=0, column=0, sticky="w")
             tk.Label(view_article_dialog, text=article['title']).grid(row=0, column=1, sticky="w")
 
-            tk.Label(view_article_dialog, text="Contenido:").grid(row=1, column=0, sticky="nw")
-            content_text = tk.Text(view_article_dialog, wrap="word", height=10, width=50)
-            content_text.grid(row=1, column=1, sticky="w")
+            tk.Label(view_article_dialog, text="Autor:").grid(row=1, column=0, sticky="w")
+            tk.Label(view_article_dialog, text=article['user_name']).grid(row=1, column=1, sticky="w")
+
+            # Mostrar contenido del artículo
+            tk.Label(view_article_dialog, text="Contenido:").grid(row=2, column=0, sticky="w")
+            content_text = tk.Text(view_article_dialog, wrap="word", height=5, width=25)
+            content_text.grid(row=3, column=0, columnspan=2, sticky="w")
             content_text.insert(tk.END, article['text'])
             content_text.config(state=tk.DISABLED)
 
             # Mostrar comentarios asociados al artículo
-            tk.Label(view_article_dialog, text="Comentarios:").grid(row=2, column=0, sticky="nw")
+            tk.Label(view_article_dialog, text="Comentarios:").grid(row=2, column=1, sticky="w", pady=(10, 0))
             comments_frame = tk.Frame(view_article_dialog)
-            comments_frame.grid(row=2, column=1, sticky="w")
+            comments_frame.grid(row=3, column=1, columnspan=2, sticky="w")
 
             comments_scrollbar = tk.Scrollbar(comments_frame, orient="vertical")
-            comments_listbox = tk.Listbox(comments_frame, yscrollcommand=comments_scrollbar.set, height=6, width=50)
+            comments_listbox = tk.Listbox(comments_frame, yscrollcommand=comments_scrollbar.set, height=4, width=50)
             comments_scrollbar.config(command=comments_listbox.yview)
             comments_scrollbar.pack(side="right", fill="y")
             comments_listbox.pack(side="left", fill="both", expand=True)
@@ -841,6 +973,35 @@ class BlogInterface:
             comments = self.comments_collection.find({"article_id": ObjectId(article_id)})
             for comment in comments:
                 comments_listbox.insert(tk.END, f"{comment['user_name']}: {comment['text']}")
+
+            # Mostrar tags asociadas al artículo
+            tk.Label(view_article_dialog, text="Tags:").grid(row=4, column=0, sticky="w", pady=(10, 0))
+            tags_text = tk.Text(view_article_dialog, wrap="word", height=2, width=50)
+            tags_text.grid(row=5, column=0, sticky="w", pady=(0, 10))
+
+            # Obtener los nombres de las tags asociadas al artículo
+            tag_names = []
+            for tag_id in article.get('tags', []):
+                tag = self.tags_collection.find_one({"_id": tag_id})
+                if tag:
+                    tag_names.append(tag.get('name', ''))
+            tags_text.insert(tk.END, ', '.join(tag_names))
+            tags_text.config(state=tk.DISABLED)
+
+            # Mostrar categorías asociadas al artículo
+            tk.Label(view_article_dialog, text="Categorías:").grid(row=4, column=1, sticky="w", pady=(10, 0))
+            categories_text = tk.Text(view_article_dialog, wrap="word", height=2, width=50)
+            categories_text.grid(row=5, column=1, sticky="w", pady=(0, 10))
+
+
+            # Obtener los nombres de las categorías asociadas al artículo
+            category_names = []
+            for category_id in article.get('categories', []):
+                category = self.categories_collection.find_one({"_id": category_id})
+                if category:
+                    category_names.append(category.get('name', ''))
+            categories_text.insert(tk.END, ', '.join(category_names))
+            categories_text.config(state=tk.DISABLED)
 
         except Exception as e:
             messagebox.showerror("Error", f"Error al recuperar la información del artículo: {e}")
@@ -897,6 +1058,7 @@ class BlogInterface:
         # Obtener el usuario seleccionado
         selected_user = users_listbox.get(selected_idx[0])
         user_id = ObjectId(selected_user.split(":")[0])
+        user_name = selected_user.split(":")[1].strip()
 
         # Preparar tags y categorías
         tags_list = [tag.strip() for tag in tags.split(",") if tag.strip()]
@@ -915,6 +1077,7 @@ class BlogInterface:
             "date": current_date,
             "text": text,
             "user_id": user_id,
+            "user_name": user_name,
             "comments": [],
             "tags": tags_ids,
             "categories": categories_ids
