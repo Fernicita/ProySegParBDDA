@@ -47,8 +47,6 @@ class BlogInterface:
         tk.Button(options_frame, text="Agregar Usuario", command=self.add_user_dialog).pack(pady=10)
         tk.Button(options_frame, text="Eliminar Usuario", command=self.delete_user).pack(pady=10)
         tk.Button(options_frame, text="Editar Usuario", command=self.edit_user).pack(pady=10)
-        tk.Button(options_frame, text="Mostrar Artículos con esta categoria", command=self.show_articles_with_category).pack(pady=10)
-
         self.display_user_data(data_frame)
 
     def display_user_data(self, frame):
